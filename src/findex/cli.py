@@ -1,73 +1,104 @@
-import argparse
 import sys
-import time
-import tracemalloc
+import json
+import logging
 from pathlib import Path
+from typing import Optional, List
+import typer
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
+
 from findex.index import InvertedIndex
 from findex.search import BooleanSearchEngine
-from findex.ranking import Ranker
+from findex.ranking import Ranker, BM25Scorer, TfidfScorer
 
-def main() -> None:
-    parser = argparse.ArgumentParser(prog="findex", description="findex Search Engine CLI")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+app = typer.Typer(help="findex — CLI пошукова система")
+console = Console()
+err_console = Console(stderr=True)
 
-    # Команда: findex index <data_dir> --out <index_file>
-    index_parser = subparsers.add_parser("index", help="Build and save inverted index")
-    index_parser.add_argument("data_dir", type=str, help="Path to directory with documents")
-    index_parser.add_argument("--out", type=str, default="index.bin", help="Output index file path")
+def setup_logging(verbose: int) -> None:
+    if verbose == 1:
+        log_level = logging.INFO
+    elif verbose >= 2:
+        log_level = logging.DEBUG
+    else:
+        log_level = logging.WARNING
+    logging.basicConfig(level=log_level, format="%(levelname)s: %(message)s", stream=sys.stderr)
 
-    # Команда: findex search <index_file> "query" [--engine {merge,set}]
-    search_parser = subparsers.add_parser("search", help="Perform boolean search")
-    search_parser.add_argument("index_path", type=str, help="Path to saved index file")
-    search_parser.add_argument("query", type=str, help="Search query")
-    search_parser.add_argument("--engine", choices=["merge", "set"], default="merge", help="Search engine")
+@app.callback()
+def main_callback(
+    verbose: int = typer.Option(0, "--verbose", "-v", count=True, help="Рівень логування (-v або -vv)")
+) -> None:
+    setup_logging(verbose)
 
-    # Команда: findex rank <index_file> "query" [--method {tfidf,bm25}] [--top N]
-    rank_parser = subparsers.add_parser("rank", help="Perform ranked search")
-    rank_parser.add_argument("index_path", type=str, help="Path to saved index file")
-    rank_parser.add_argument("query", type=str, help="Search query")
-    rank_parser.add_argument("--method", choices=["tfidf", "bm25"], default="bm25", help="Ranking method")
-    rank_parser.add_argument("--top", type=int, default=5, help="Top N results")
+@app.command()
+def index(
+    data_dir: Path = typer.Argument(..., help="Шлях до каталогу з документами"),
+    out: Path = typer.Option(Path("index.bin"), "--out", "-o", help="Шлях збереження індексу")
+) -> None:
+    """Побудова та збереження інвертованого індексу."""
+    if not data_dir.exists():
+        err_console.print(f"[bold red]Помилка:[/bold red] Каталог '{data_dir}' не існує.")
+        raise typer.Exit(code=1)
 
-    args = parser.parse_args()
-
-    tracemalloc.start()
-    start = time.perf_counter()
-
-    if args.command == "index":
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), transient=True) as progress:
+        progress.add_task(description="Побудова індексу...", total=None)
         idx = InvertedIndex()
-        idx.build(Path(args.data_dir))
-        idx.save_pickle(Path(args.out))
-        print(f"[+] Index successfully built and saved to '{args.out}'")
+        idx.build(data_dir)
+        idx.save_pickle(out)
 
-    elif args.command == "search":
-        idx = InvertedIndex.load_pickle(Path(args.index_path))
-        engine = BooleanSearchEngine(idx, engine=args.engine)
-        terms = args.query.split()
-        if len(terms) >= 2:
-            res = engine.search_and(terms[0], terms[1])
-        elif len(terms) == 1:
-            res = [p.doc_id for p in idx.index.get(terms[0].lower(), [])]
-        else:
-            res = []
-        print(f"Results for '{args.query}' [{args.engine}]: {res}")
+    console.print(f"[bold green]Успішно![/bold green] Індекс збережено у '{out}'. Документів: {idx.num_docs}")
 
-    elif args.command == "rank":
-        idx = InvertedIndex.load_pickle(Path(args.index_path))
+@app.command()
+def search(
+    index_path: Path = typer.Argument(..., help="Шлях до файлу індексу"),
+    query: str = typer.Argument(..., help="Пошуковий запит"),
+    method: str = typer.Option("bm25", "--method", "-m", help="Метод ранжування: bm25 або tfidf"),
+    json_out: bool = typer.Option(False, "--json", help="Вивід результатів у форматі JSON в stdout"),
+    top: int = typer.Option(5, "--top", "-t", help="Кількість топ-результатів")
+) -> None:
+    """Ранжований пошук у побудованому індексі."""
+    if not index_path.exists():
+        err_console.print(f"[bold red]Помилка:[/bold red] Файл індексу '{index_path}' не знайдено.")
+        raise typer.Exit(code=1)
+
+    try:
+        idx = InvertedIndex.load_pickle(index_path)
         ranker = Ranker(idx)
-        if args.method == "tfidf":
-            results = ranker.score_tf_idf(args.query)[:args.top]
-        else:
-            results = ranker.score_bm25(args.query)[:args.top]
-        print(f"Top {args.top} results for '{args.query}' [{args.method.upper()}]:")
-        for doc_id, score in results:
-            meta = idx.doc_metadata[doc_id]
-            print(f"  Doc ID: {doc_id} | Score: {score:.4f} | Path: {meta.path}")
+        scorer = BM25Scorer(idx) if method == "bm25" else TfidfScorer(idx)
+        results = ranker.search(query, scorer, top_k=top)
 
-    elapsed = time.perf_counter() - start
-    _, peak = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
-    print(f"Execution time: {elapsed:.6f}s | Peak Memory: {peak / (1024*1024):.2f} MB")
+        if json_out:
+            output = [{"doc_id": r.doc_id, "score": round(r.score, 4)} for r in results]
+            print(json.dumps(output, indent=2))
+        else:
+            table = Table(title=f"Результати пошуку для '{query}' ({method.upper()})")
+            table.add_column("Doc ID", justify="right", style="cyan")
+            table.add_column("Score", justify="right", style="magenta")
+            table.add_column("Шлях до файлу", style="green")
+
+            for res in results:
+                meta = idx.doc_metadata[res.doc_id]
+                table.add_row(str(res.doc_id), f"{res.score:.4f}", str(meta.path))
+
+            console.print(table)
+    except Exception as e:
+        err_console.print(f"[bold red]Помилка виконання пошуку:[/bold red] {e}")
+        raise typer.Exit(code=1)
+
+@app.command()
+def stats(
+    index_path: Path = typer.Argument(..., help="Шлях до файлу індексу")
+) -> None:
+    """Вивід статистики індексу."""
+    if not index_path.exists():
+        err_console.print(f"[bold red]Помилка:[/bold red] Файл індексу '{index_path}' не знайдено.")
+        raise typer.Exit(code=1)
+
+    idx = InvertedIndex.load_pickle(index_path)
+    console.print(f"[bold cyan]Кількість термінів:[/bold cyan] {len(idx)}")
+    console.print(f"[bold cyan]Кількість документів:[/bold cyan] {idx.num_docs}")
+    console.print(f"[bold cyan]Середня довжина документа:[/bold cyan] {idx.avg_doc_length:.2f}")
 
 if __name__ == "__main__":
-    main()
+    app()
