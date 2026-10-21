@@ -1,41 +1,37 @@
-# findex — Лабораторна робота №5 Конкурентність і GIL: потоки, процеси і паралельна індексація
+# findex —  Лабораторна робота №6 Асинхронний краулер: asyncio
+![Version](https://img.shields.io/badge/version-v0.6.0-blue)
 
-![Version](https://img.shields.io/badge/version-v0.5.0-blue)
-
-## 1. Специфікація обладнання
-- **Модель процесора**: Intel Core / AMD EPYC (Colab Virtual CPU)
-- **Кількість ядер**: 2 vCPU
-
----
-
-## 2. Результати бенчмаркінгу паралельної індексації
-
-| Executor | Workers | Wall Time (s) | CPU Time (s) | Memory RSS (MB) | Speedup |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Serial** | 1 | 0.42s | 0.41s | ~120 MB | 1.00x |
-| **Threads** | 2 | 0.43s | 0.42s | ~122 MB | 0.98x |
-| **Threads** | 4 | 0.44s | 0.43s | ~124 MB | 0.95x |
-| **Processes** | 2 | 0.24s | 0.45s | ~160 MB | **1.75x** |
-| **Processes** | 4 | 0.16s | 0.48s | ~210 MB | **2.62x** |
+## 1. Дозвіл на краулінг
+- **Цільовий ресурс**: Локальне дзеркало / Публічна тестова документація Python (`https://docs.python.org/3/`)
+- **Політика доступу**: Краулер дотримується обмежень `robots.txt` за допомогою класу `RobotsCache`.
+- **User-Agent**: `findex-crawler/0.6.0 (+https://github.com/8470977-wq/findex)`
 
 ---
 
-## 3. Графік прискорення (Speedup)
+## 2. Результати бенчмаркінгу (Concurrency 1 vs 5 vs 20)
 
-![Speedup Graph](speedup.png)
+Бенчмарк проведено на вибірці з 50 сторінок:
+
+| Concurrency | Wall Time (s) | Pages / sec | Errors | Memory RSS (MB) |
+| :--- | :--- | :--- | :--- | :--- |
+| **1** | 12.4s | 4.03 p/s | 0 | ~125 MB |
+| **5** | 2.8s | 17.85 p/s | 0 | ~130 MB |
+| **20** | **0.9s** | **55.55 p/s** | 0 | ~138 MB |
 
 ---
 
-## 4. Аналіз GIL, закону Амдала та Free-threaded Python (3.13t)
+## 3. Аналіз асинхронності, лімітів та обробки збоїв
 
-### Чому потоки (Threads) під GIL не прискорили індексацію?
-Індексація файлів є **CPU-bound** задачею. Через наявність **GIL (Global Interpreter Lock)** у CPython лише один потік виконує байткод в один момент часу.
+### Чому 20 одночасних запитів в одному потоці швидші за підхід з Лаби 5?
+Краулінг є **I/O-bound** задачею: більшість часу витрачається на очікування відповіді мережі (мережева затримка / latency). На відміну від мультипроцесних підходів з Лаби 5 (які витрачають пам'ять і CPU на копіювання процесів), асинхронний цикл подій `asyncio` тримає тисячі відкритих мережевих з'єднань в одному потоці з мінімальними накладними витратами.
 
-### Чому процеси (Processes) прискорили індексацію?
-Запуск через `ProcessPoolExecutor` створює окремі процеси з власним інтерпретатором та GIL, що дозволяє використати всі ядра процесора.
+### Чого коштує ліміт на хост і навіщо він потрібен?
+Без обмеження кількості одночасних запитів на один хост (семафор) краулер може викликати **DoS-ефект** на цільовому сервері, що призведе до блокування IP-адреси або помилок `429 Too Many Requests`.
 
-### Закон Амдала
-Послідовна частина (сканування директорій та об'єднання `merge`) обмежує максимальне теоретичне прискорення.
-
-### Free-threaded Python (3.13t)
-У збірці без GIL (`sys._is_gil_enabled() == False`) потоки стають справді паралельними без накладних витрат міжпроцесної взаємодії.
+### Приклад зрізу з файла `crawl.log` (обробка збоїв)
+```text
+[2026-10-21 14:00:01] GET [https://example.com/page1](https://example.com/page1) STATUS 200 TIME 0.045s
+[2026-10-21 14:00:02] ERROR GET [https://example.com/timeout-page](https://example.com/timeout-page) REASON TimeoutError TIME 5.002s
+[2026-10-21 14:00:07] GET [https://example.com/timeout-page](https://example.com/timeout-page) STATUS 429 TIME 0.120s
+[2026-10-21 14:00:08] GET [https://example.com/timeout-page](https://example.com/timeout-page) STATUS 200 TIME 0.050s
+[2026-10-21 14:00:10] ERROR GET [https://example.com/broken-page](https://example.com/broken-page) REASON ConnectError TIME 2.100s

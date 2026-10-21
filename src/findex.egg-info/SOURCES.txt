@@ -5,6 +5,7 @@ src/findex/cli_index.py
 src/findex/cli_rank.py
 src/findex/cli_search.py
 src/findex/corpus.py
+src/findex/crawler.py
 src/findex/index.py
 src/findex/models.py
 src/findex/ranking.py
@@ -17,6 +18,7 @@ src/findex.egg-info/entry_points.txt
 src/findex.egg-info/requires.txt
 src/findex.egg-info/top_level.txt
 tests/test_cli.py
+tests/test_crawler.py
 tests/test_index.py
 tests/test_ranking.py
 tests/test_search.py

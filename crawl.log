@@ -1,0 +1,5 @@
+[2026-10-21 14:00:01] GET https://example.com/page1 STATUS 200 TIME 0.045s
+[2026-10-21 14:00:02] ERROR GET https://example.com/timeout-page REASON TimeoutError TIME 5.002s
+[2026-10-21 14:00:07] GET https://example.com/timeout-page STATUS 429 TIME 0.120s
+[2026-10-21 14:00:08] GET https://example.com/timeout-page STATUS 200 TIME 0.050s
+[2026-10-21 14:00:10] ERROR GET https://example.com/broken-page REASON ConnectError TIME 2.100s

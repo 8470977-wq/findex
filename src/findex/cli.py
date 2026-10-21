@@ -1,6 +1,7 @@
 import sys
 import json
 import logging
+import asyncio
 from pathlib import Path
 from typing import Optional, List
 import typer
@@ -11,6 +12,7 @@ from rich.table import Table
 from findex.index import InvertedIndex
 from findex.search import BooleanSearchEngine
 from findex.ranking import Ranker, BM25Scorer, TfidfScorer
+from findex.crawler import async_crawl
 
 app = typer.Typer(help="findex — CLI пошукова система")
 console = Console()
@@ -30,6 +32,31 @@ def main_callback(
     verbose: int = typer.Option(0, "--verbose", "-v", count=True, help="Рівень логування (-v або -vv)")
 ) -> None:
     setup_logging(verbose)
+
+@app.command()
+def crawl(
+    start_url: str = typer.Argument(..., help="Початковий URL для краулінгу"),
+    max_pages: int = typer.Option(200, "--max-pages", "-m", help="Максимальна кількість сторінок"),
+    concurrency: int = typer.Option(5, "--concurrency", "-c", help="Кількість одночасних запитів"),
+    out: Path = typer.Option(Path("crawled.jsonl"), "--out", "-o", help="Файл для збереження JSONL"),
+    log_file: Path = typer.Option(Path("crawl.log"), "--log", "-l", help="Файл логу збоїв та статусу")
+) -> None:
+    """Асинхронний краулінг веб-сайту."""
+    if out.exists():
+        out.unlink()
+    if log_file.exists():
+        log_file.unlink()
+
+    async def _run():
+        count = 0
+        console.print(f"[bold cyan]Запуск краулінгу {start_url} (concurrency={concurrency}, max_pages={max_pages})...[/bold cyan]")
+        async for doc in async_crawl(start_url, max_pages=max_pages, concurrency=concurrency, out_jsonl=out, log_file=log_file):
+            count += 1
+            if count % 10 == 0 or count == max_pages:
+                console.print(f"[green]Зібрано сторінок:[/green] {count}/{max_pages}")
+        console.print(f"[bold green]Завершено![/bold green] Збережено {count} сторінок у '{out}'.")
+
+    asyncio.run(_run())
 
 @app.command()
 def index(
