@@ -1,22 +1,35 @@
 Metadata-Version: 2.4
 Name: findex
-Version: 0.1.0
-Summary: Inverted index and search engine in Python
+Version: 0.4.0
+Summary: CLI search engine with inverted index and ranking
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
+Requires-Dist: typer>=0.9.0
+Requires-Dist: rich>=13.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Requires-Dist: hypothesis>=6.0.0; extra == "dev"
+Requires-Dist: coverage>=7.0.0; extra == "dev"
 
-# findex — Пошукова система (Лабораторна 4)
+# findex — Лабораторна робота №4 Типи, тести, пакування і CLI
+
+![CI Status](https://github.com/8470977-wq/findex/actions/workflows/ci.yml/badge.svg)
+![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
+![Version](https://img.shields.io/badge/version-v0.4.0-blue)
 
 ## Особливості Лабораторної роботи 4
-- **Пакування та розгортання**: Проєкт перетворено на повноцінний Python-пакет із використанням `pyproject.toml`.
-- **Консольний інтерфейс (CLI)**: Створено єдину точку входу `findex` з підкомандами `index`, `search`, `rank`.
-- **Статична типізація**: Повна підтримка type hints та валідація через `mypy`.
-- **Автоматизоване тестування**: Розширений набор модульних тестів `pytest`.
+- **Пакет та збірка Wheel**: Проєкт повністю упаковано у формат `.whl` (версія `v0.4.0`).
+- **Сучасний CLI на Typer & Rich**:
+  - `findex index <data_dir>` — побудова індексу зі смугою прогресу.
+  - `findex search <index.bin> "query"` — пошук із гарним виводом у вигляді Rich-таблиці або у JSON (`--json`).
+  - `findex stats <index.bin>` — вивід загальної статистики.
+- **Діагностика та логування**: Усі виводи налаштовано через стандартний модуль `logging` у `stderr`.
+- **Автоматизація (CI)**: Налаштовано GitHub Actions Workflow (`ci.yml`) для перевірки коду на кожен push/PR.
 
 ---
 
-## Встановлення та запуск
+## Встановлення із зібраного Wheel
 
-1. **Встановлення пакета в режим розробки**:
-   ```bash
-   pip install -e .
+```bash
+pip install dist/findex-0.4.0-py3-none-any.whl

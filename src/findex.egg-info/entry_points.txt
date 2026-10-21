@@ -1,2 +1,2 @@
 [console_scripts]
-findex = findex.cli:main
+findex = findex.cli:app

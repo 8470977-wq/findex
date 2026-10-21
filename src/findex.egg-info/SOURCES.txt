@@ -14,6 +14,7 @@ src/findex.egg-info/PKG-INFO
 src/findex.egg-info/SOURCES.txt
 src/findex.egg-info/dependency_links.txt
 src/findex.egg-info/entry_points.txt
+src/findex.egg-info/requires.txt
 src/findex.egg-info/top_level.txt
 tests/test_cli.py
 tests/test_index.py
