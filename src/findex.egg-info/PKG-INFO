@@ -22,7 +22,7 @@ Requires-Dist: pytest-benchmark; extra == "dev"
 Requires-Dist: mypy; extra == "dev"
 Requires-Dist: coverage; extra == "dev"
 
-# findex — High-Performance Python Search Engine
+# findex — Лабораторна робота №8 Швидше, потім розумніше: профілювання, NumPy і семантичний пошук
 
 > **Одне речення про проєкт**: Повнофункціональна високоефективна пошукова система на Python з інвертованим індексом, паралельним індексуванням, асинхронним краулером, FastAPI REST API та семантичним гібридним пошуком.
 
