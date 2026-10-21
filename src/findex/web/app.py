@@ -10,14 +10,20 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from findex.index import InvertedIndex
-from findex.ranking import Ranker, BM25Scorer, TfidfScorer, rrf_merge
+from findex.ranking import Ranker, BM25Scorer, TfidfScorer
 from findex.web.config import settings
 from findex.web.schemas import SearchResponse, SearchResultItem, StatsResponse, DocResponse
 
 logger = logging.getLogger("findex.web")
 
+# Шукаємо папку templates поруч із файлом app.py
 BASE_DIR = Path(__file__).resolve().parent
-templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+templates_dir = BASE_DIR / "templates"
+
+if not templates_dir.exists():
+    templates_dir.mkdir(parents=True, exist_ok=True)
+
+templates = Jinja2Templates(directory=str(templates_dir))
 
 index_instance: Optional[InvertedIndex] = None
 
@@ -83,11 +89,9 @@ def search_api(
     scorer = BM25Scorer(index)
     lexical_res = ranker.search(q, scorer, top_k=100)
 
-    final_results = lexical_res
-
     start_idx = (page - 1) * page_size
     end_idx = start_idx + page_size
-    page_results = final_results[start_idx:end_idx]
+    page_results = lexical_res[start_idx:end_idx]
 
     items = []
     for res in page_results:
@@ -102,7 +106,7 @@ def search_api(
 
     return SearchResponse(
         query=q,
-        total_results=len(final_results),
+        total_results=len(lexical_res),
         page=page,
         page_size=page_size,
         results=items
@@ -152,10 +156,7 @@ def home_page(request: Request, q: Optional[str] = None, index: InvertedIndex = 
                 "snippet": snippet
             })
 
-    context = {
-        "request": request,
-        "query": q or "",
-        "results": results,
-        "total": total
-    }
-    return templates.TemplateResponse(request=request, name="index.html", context=context)
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "query": q or "", "results": results, "total": total}
+    )

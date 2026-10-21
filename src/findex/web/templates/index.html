@@ -16,7 +16,7 @@
     </style>
 </head>
 <body>
-    <h1>🔍 findex Search</h1>
+    <h1>🔍 findex Search Engine</h1>
     <form action="/" method="get" class="search-box">
         <input type="text" name="q" value="{{ query }}" placeholder="Введіть пошуковий запит..." required>
         <button type="submit">Пошук</button>
@@ -27,7 +27,7 @@
         {% for item in results %}
             <div class="result-item">
                 <a href="/docs/{{ item.doc_id }}" class="result-title">Документ #{{ item.doc_id }}</a>
-                <span class="score">BM25 Score: {{ "%.4f"|format(item.score) }}</span>
+                <span class="score">Score: {{ "%.4f"|format(item.score) }}</span>
                 <div class="snippet">{{ item.snippet | safe }}</div>
             </div>
         {% endfor %}
