@@ -26,7 +26,7 @@
         <h2>Результати для "{{ query }}" (всього: {{ total }})</h2>
         {% for item in results %}
             <div class="result-item">
-                <a href="/docs/{{ item.doc_id }}" class="result-title">Документ #{{ item.doc_id }}</a>
+                <a href="#" class="result-title">Документ #{{ item.doc_id }}</a>
                 <span class="score">Score: {{ "%.4f"|format(item.score) }}</span>
                 <div class="snippet">{{ item.snippet | safe }}</div>
             </div>

@@ -8,7 +8,7 @@ COPY . /app
 
 RUN pip install --no-cache-dir .
 
-# Генерація стартового корпусу та індексу
+# Генерація тестового індексу при збірці контейнера
 RUN mkdir -p data && \
     echo "python search engine inverted index" > data/doc1.txt && \
     echo "fastapi web search engine with ranking bm25" > data/doc2.txt && \

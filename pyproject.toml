@@ -23,7 +23,7 @@ dependencies = [
 ]
 
 [project.scripts]
-findex = "findex.cli:app"
+findex = "findex.cli.app:app"
 
 [tool.setuptools.package-data]
 "findex.web" = ["templates/*.html"]
