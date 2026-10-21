@@ -4,20 +4,30 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "findex"
-version = "0.1.0"
-description = "Inverted index and search engine in Python"
+version = "0.4.0"
+description = "CLI search engine with inverted index and ranking"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "typer>=0.9.0",
+    "rich>=13.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "mypy>=1.0.0",
+    "hypothesis>=6.0.0",
+    "coverage>=7.0.0"
+]
 
 [project.scripts]
-findex = "findex.cli:main"
+findex = "findex.cli:app"
 
 [tool.mypy]
 python_version = "3.10"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
+strict = true
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

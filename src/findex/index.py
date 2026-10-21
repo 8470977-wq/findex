@@ -4,7 +4,9 @@ from typing import Dict, List, Iterator, Any
 from functools import cached_property
 from collections.abc import Mapping
 from contextlib import contextmanager
+
 from findex.models import Posting, DocMeta
+from findex.corpus import tokenize
 
 class InvertedIndex(Mapping):
     def __init__(self) -> None:
@@ -12,7 +14,34 @@ class InvertedIndex(Mapping):
         self.doc_metadata: Dict[int, DocMeta] = {}
         self.doc_count: int = 0
 
-    # Dunder-методи згідно з протоколом Mapping
+    def build(self, data_dir: Path) -> None:
+        """Побудова інвертованого індексу з текстових файлів у директорії."""
+        self.index.clear()
+        self.doc_metadata.clear()
+        self.doc_count = 0
+
+        files = sorted(list(data_dir.glob("*.txt")))
+        for doc_id, filepath in enumerate(files):
+            text = filepath.read_text(encoding="utf-8", errors="ignore")
+            tokens = list(tokenize(text))
+            
+            # Сохраняем метаданные документа
+            self.doc_metadata[doc_id] = DocMeta(doc_id=doc_id, path=str(filepath), length=len(tokens))
+            
+            # Подсчитываем частоты терминов (tf)
+            tf_counts: Dict[str, int] = {}
+            for token in tokens:
+                tf_counts[token] = tf_counts.get(token, 0) + 1
+                
+            # Заполняем индекс
+            for term, tf in tf_counts.items():
+                if term not in self.index:
+                    self.index[term] = []
+                self.index[term].append(Posting(doc_id=doc_id, tf=tf))
+                
+            self.doc_count += 1
+
+    # Dunder-методи
     def __getitem__(self, term: str) -> List[Posting]:
         return self.index.get(term.lower(), [])
 
@@ -55,7 +84,6 @@ class InvertedIndex(Mapping):
 
 @contextmanager
 def open_index(path: Path):
-    """Context Manager для безпечного відкриття та звільнення ресурсів індексу."""
     idx = InvertedIndex.load_pickle(path)
     try:
         yield idx
