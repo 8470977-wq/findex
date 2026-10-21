@@ -1,24 +1,19 @@
-# Stage 1: Build stage
-FROM python:3.10-slim as builder
+FROM python:3.10-slim
 
 WORKDIR /app
-RUN pip install --no-cache-dir --upgrade pip build
+
+# Оновлюємо pip
+RUN pip install --no-cache-dir --upgrade pip
 
 COPY . /app
-RUN python -m build --wheel
 
-# Stage 2: Final runtime stage
-FROM python:3.10-slim as runner
+# Встановлюємо необхідні залежності та пакет findex
+RUN pip install --no-cache-dir .
 
-WORKDIR /app
-RUN useradd -m findexuser
-
-COPY --from=builder /app/dist/*.whl /app/
-# Оновлюємо pip та встановлюємо wheel без конфліктів залежностей
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir /app/*.whl
-
+# Створюємо non-root користувача
+RUN useradd -m findexuser && chown -R findexuser:findexuser /app
 USER findexuser
+
 EXPOSE 8000
 
 CMD ["findex", "serve", "--host", "0.0.0.0", "--port", "8000"]

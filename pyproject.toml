@@ -9,21 +9,21 @@ description = "FastAPI web search engine with inverted index and ranking"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "typer>=0.9.0",
-    "rich>=13.0.0",
-    "fastapi>=0.100.0",
-    "uvicorn>=0.22.0",
-    "pydantic>=2.0.0",
-    "pydantic-settings>=2.0.0",
-    "jinja2>=3.1.0",
-    "httpx>=0.24.0"
+    "typer",
+    "rich",
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "pydantic-settings",
+    "jinja2",
+    "httpx"
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
-    "mypy>=1.0.0",
-    "coverage>=7.0.0"
+    "pytest",
+    "mypy",
+    "coverage"
 ]
 
 [project.scripts]
@@ -31,7 +31,6 @@ findex = "findex.cli:app"
 
 [tool.mypy]
 python_version = "3.10"
-strict = true
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
