@@ -1,92 +1,63 @@
-import array
-import json
 import pickle
-from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Iterator, Any
+from functools import cached_property
+from collections.abc import Mapping
+from contextlib import contextmanager
+from findex.models import Posting, DocMeta
 
-from findex.corpus import iter_documents, tokenize
-from findex.models import DocMeta, Posting
-
-
-class InvertedIndex:
-    def __init__(self, store_positions: bool = False):
-        self.store_positions = store_positions
-        # term -> list of Posting
-        self.index: Dict[str, List[Posting]] = defaultdict(list)
-        # doc_id -> DocMeta
+class InvertedIndex(Mapping):
+    def __init__(self) -> None:
+        self.index: Dict[str, List[Posting]] = {}
         self.doc_metadata: Dict[int, DocMeta] = {}
-        self.doc_count = 0
+        self.doc_count: int = 0
 
-    def build(self, data_dir: Union[str, Path]) -> None:
-        """Будує інвертований індекс за один прохід по лінивому пайплайну."""
-        data_path = Path(data_dir)
-        for doc_id, (file_path, content) in enumerate(iter_documents(data_path)):
-            tokens = list(tokenize(content))
-            doc_len = len(tokens)
-            self.doc_metadata[doc_id] = DocMeta(
-                doc_id=doc_id, path=str(file_path), length=doc_len
-            )
+    # Dunder-методи згідно з протоколом Mapping
+    def __getitem__(self, term: str) -> List[Posting]:
+        return self.index.get(term.lower(), [])
 
-            if self.store_positions:
-                term_positions = defaultdict(list)
-                for pos, token in enumerate(tokens):
-                    term_positions[token].append(pos)
-                for token, positions in term_positions.items():
-                    self.index[token].append(
-                        Posting(doc_id=doc_id, tf=len(positions), positions=positions)
-                    )
-            else:
-                counts = Counter(tokens)
-                for token, count in counts.items():
-                    self.index[token].append(Posting(doc_id=doc_id, tf=count))
+    def __len__(self) -> int:
+        return len(self.index)
 
-            self.doc_count += 1
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.index)
 
-    def save_pickle(self, filepath: Union[str, Path]) -> None:
-        """Збереження через pickle."""
-        with open(filepath, "wb") as f:
-            pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
+    def __contains__(self, term: object) -> bool:
+        if isinstance(term, str):
+            return term.lower() in self.index
+        return False
 
-    @staticmethod
-    def load_pickle(filepath: Union[str, Path]) -> "InvertedIndex":
-        """Завантаження з pickle.
-        
-        УВАГА: pickle.load небезпечний для чужих файлів, оскільки може виконувати
-        довільний Python-код під час десеріалізації (через __reduce__).
-        """
-        with open(filepath, "rb") as f:
+    def __repr__(self) -> str:
+        return f"<InvertedIndex terms={len(self.index)} docs={self.doc_count}>"
+
+    @property
+    def num_docs(self) -> int:
+        return self.doc_count
+
+    @cached_property
+    def avg_doc_length(self) -> float:
+        if self.doc_count == 0:
+            return 0.0
+        total_len = sum(meta.length for meta in self.doc_metadata.values())
+        return total_len / self.doc_count
+
+    def df(self, term: str) -> int:
+        return len(self[term])
+
+    def save_pickle(self, path: Path) -> None:
+        with open(path, "wb") as f:
+            pickle.dump(self, f)
+
+    @classmethod
+    def load_pickle(cls, path: Path) -> "InvertedIndex":
+        with open(path, "rb") as f:
             return pickle.load(f)
 
-    def save_json(self, filepath: Union[str, Path]) -> None:
-        """Альтернативна серіалізація у формат JSON."""
-        data = {
-            "store_positions": self.store_positions,
-            "doc_count": self.doc_count,
-            "metadata": {
-                str(k): {"doc_id": v.doc_id, "path": v.path, "length": v.length}
-                for k, v in self.doc_metadata.items()
-            },
-            "index": {
-                term: [
-                    {"doc_id": p.doc_id, "tf": p.tf, "positions": p.positions}
-                    for p in postings
-                ]
-                for term, postings in self.index.items()
-            },
-        }
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
-
-    @staticmethod
-    def load_json(filepath: Union[str, Path]) -> "InvertedIndex":
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        idx = InvertedIndex(store_positions=data["store_positions"])
-        idx.doc_count = data["doc_count"]
-        idx.doc_metadata = {
-            int(k): DocMeta(**v) for k, v in data["metadata"].items()
-        }
-        for term, postings in data["index"].items():
-            idx.index[term] = [Posting(**p) for p in postings]
-        return idx
+@contextmanager
+def open_index(path: Path):
+    """Context Manager для безпечного відкриття та звільнення ресурсів індексу."""
+    idx = InvertedIndex.load_pickle(path)
+    try:
+        yield idx
+    finally:
+        del idx
