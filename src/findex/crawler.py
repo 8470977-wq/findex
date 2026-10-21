@@ -92,27 +92,26 @@ async def fetch_with_retry(
     while retries <= max_retries:
         start_time = time.perf_counter()
         try:
-            async with asyncio.timeout(5.0):
-                resp = await client.get(url)
-                elapsed = time.perf_counter() - start_time
-                
-                if log_file:
-                    with open(log_file, "a", encoding="utf-8") as f:
-                        f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] GET {url} STATUS {resp.status_code} TIME {elapsed:.3f}s\n")
+            resp = await asyncio.wait_for(client.get(url), timeout=5.0)
+            elapsed = time.perf_counter() - start_time
+            
+            if log_file:
+                with open(log_file, "a", encoding="utf-8") as f:
+                    f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] GET {url} STATUS {resp.status_code} TIME {elapsed:.3f}s\n")
 
-                if resp.status_code == 200:
-                    return resp.text
-                elif resp.status_code in (429, 500, 502, 503, 504):
-                    retry_after = resp.headers.get("Retry-After")
-                    if retry_after and retry_after.isdigit():
-                        sleep_time = float(retry_after)
-                    else:
-                        sleep_time = backoff + random.uniform(0, 0.1)
-                        backoff *= 2
-                    retries += 1
-                    await asyncio.sleep(sleep_time)
+            if resp.status_code == 200:
+                return resp.text
+            elif resp.status_code in (429, 500, 502, 503, 504):
+                retry_after = resp.headers.get("Retry-After")
+                if retry_after and retry_after.isdigit():
+                    sleep_time = float(retry_after)
                 else:
-                    return None
+                    sleep_time = backoff + random.uniform(0, 0.1)
+                    backoff *= 2
+                retries += 1
+                await asyncio.sleep(sleep_time)
+            else:
+                return None
         except (httpx.RequestError, asyncio.TimeoutError) as e:
             elapsed = time.perf_counter() - start_time
             if log_file:
@@ -133,7 +132,7 @@ async def async_crawl(
     custom_transport: Optional[httpx.AsyncBaseTransport] = None
 ) -> AsyncGenerator[Dict[str, Any], None]:
     
-    headers = {"User-Agent": "findex-crawler/0.6.0 (+https://github.com/8470977-wq/findex)"}
+    headers = {"User-Agent": "findex-crawler/0.7.0 (+https://github.com/8470977-wq/findex)"}
     
     client_kwargs = {"headers": headers, "follow_redirects": True, "timeout": 5.0}
     if custom_transport:
