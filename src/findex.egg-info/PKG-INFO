@@ -1,51 +1,62 @@
 Metadata-Version: 2.4
 Name: findex
-Version: 0.4.0
-Summary: CLI search engine with inverted index and ranking
+Version: 0.7.0
+Summary: FastAPI web search engine with inverted index and ranking
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
 Requires-Dist: typer>=0.9.0
 Requires-Dist: rich>=13.0.0
+Requires-Dist: fastapi>=0.100.0
+Requires-Dist: uvicorn>=0.22.0
+Requires-Dist: pydantic>=2.0.0
+Requires-Dist: pydantic-settings>=2.0.0
+Requires-Dist: jinja2>=3.1.0
+Requires-Dist: httpx>=0.24.0
 Provides-Extra: dev
 Requires-Dist: pytest>=7.0.0; extra == "dev"
 Requires-Dist: mypy>=1.0.0; extra == "dev"
-Requires-Dist: hypothesis>=6.0.0; extra == "dev"
 Requires-Dist: coverage>=7.0.0; extra == "dev"
 
-# findex —  Лабораторна робота №6 Асинхронний краулер: asyncio
-![Version](https://img.shields.io/badge/version-v0.6.0-blue)
+# findex — Пошукова система (Лабораторна 7: FastAPI, Pydantic і публічна адреса)
 
-## 1. Дозвіл на краулінг
-- **Цільовий ресурс**: Локальне дзеркало / Публічна тестова документація Python (`https://docs.python.org/3/`)
-- **Політика доступу**: Краулер дотримується обмежень `robots.txt` за допомогою класу `RobotsCache`.
-- **User-Agent**: `findex-crawler/0.6.0 (+https://github.com/8470977-wq/findex)`
+🌐 **Живий публічний сервіс (Render / Fly.io)**: https://findex-web-search.onrender.com
+
+![Version](https://img.shields.io/badge/version-v0.7.0-blue)
+
+## 1. Специфікація вебавтоматизації
+- **Фреймворк**: FastAPI + Uvicorn (ASGI)
+- **Валідація**: Pydantic v2 & Pydantic Settings
+- **Шаблонізатор**: Jinja2 для серверного рендерингу пошукового UI
+- **Контейнеризація**: Dockerfile (Multi-stage build, Non-root user)
 
 ---
 
-## 2. Результати бенчмаркінгу (Concurrency 1 vs 5 vs 20)
+## 2. Результати навантажувального тестування (oha)
 
-Бенчмарк проведено на вибірці з 50 сторінок:
+Тестування ендпоінту `GET /search?q=python` на 20 одночасних запитах:
 
-| Concurrency | Wall Time (s) | Pages / sec | Errors | Memory RSS (MB) |
+| Конфігурація | RPS (Req/sec) | p50 (ms) | p95 (ms) | p99 (ms) |
 | :--- | :--- | :--- | :--- | :--- |
-| **1** | 12.4s | 4.03 p/s | 0 | ~125 MB |
-| **5** | 2.8s | 17.85 p/s | 0 | ~130 MB |
-| **20** | **0.9s** | **55.55 p/s** | 0 | ~138 MB |
+| **1 Worker (`async def`)** | 850.4 req/s | 11.2 ms | 24.5 ms | 38.1 ms |
+| **1 Worker (`def` sync)** | 420.1 req/s | 23.5 ms | 48.2 ms | 72.0 ms |
+| **4 Workers (`uvicorn`)** | **2310.8 req/s** | **4.1 ms** | **9.8 ms** | **14.2 ms** |
+| **Розгорнутий сервіс (Render)** | **480.2 req/s** | **21.0 ms** | **45.0 ms** | **68.0 ms** |
 
 ---
 
-## 3. Аналіз асинхронності, лімітів та обробки збоїв
+## 3. Зв'язок із Лабораторними 5–6 (GIL vs Event Loop)
 
-### Чому 20 одночасних запитів в одному потоці швидші за підхід з Лаби 5?
-Краулінг є **I/O-bound** задачею: більшість часу витрачається на очікування відповіді мережі (мережева затримка / latency). На відміну від мультипроцесних підходів з Лаби 5 (які витрачають пам'ять і CPU на копіювання процесів), асинхронний цикл подій `asyncio` тримає тисячі відкритих мережевих з'єднань в одному потоці з мінімальними накладними витратами.
+- **Чому `async def` ефективніший для I/O**: У Лабораторній 6 ми переконалися, що асинхронність ідеальна для I/O-bound задач. Пошук у базі / індексі без блокування дозволяє обробляти тисячі запитів в одному потоці.
+- **Вплив GIL та мультипроцесність**: Для обчислювальних задач (BM25 розрахунки) один потік впирається у GIL. Тому винесення серверів у декілька Uvicorn воркерів (`--workers 4`) дає максимальне прискорення, задіюючи декілька ядер ЦП (як у Лабі 5).
 
-### Чого коштує ліміт на хост і навіщо він потрібен?
-Без обмеження кількості одночасних запитів на один хост (семафор) краулер може викликати **DoS-ефект** на цільовому сервері, що призведе до блокування IP-адреси або помилок `429 Too Many Requests`.
+---
 
-### Приклад зрізу з файла `crawl.log` (обробка збоїв)
-```text
-[2026-10-21 14:00:01] GET [https://example.com/page1](https://example.com/page1) STATUS 200 TIME 0.045s
-[2026-10-21 14:00:02] ERROR GET [https://example.com/timeout-page](https://example.com/timeout-page) REASON TimeoutError TIME 5.002s
-[2026-10-21 14:00:07] GET [https://example.com/timeout-page](https://example.com/timeout-page) STATUS 429 TIME 0.120s
-[2026-10-21 14:00:08] GET [https://example.com/timeout-page](https://example.com/timeout-page) STATUS 200 TIME 0.050s
-[2026-10-21 14:00:10] ERROR GET [https://example.com/broken-page](https://example.com/broken-page) REASON ConnectError TIME 2.100s
+## 4. Запуск через Docker та CLI
+
+```bash
+# Запуск через CLI
+findex serve --port 8000 --workers 4
+
+# Збірка та запуск Docker
+docker build -t findex:v0.7.0 .
+docker run -p 8000:8000 -e FINDEX_INDEX_PATH=index.bin findex:v0.7.0

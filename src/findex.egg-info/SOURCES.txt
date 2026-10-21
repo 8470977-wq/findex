@@ -17,9 +17,13 @@ src/findex.egg-info/dependency_links.txt
 src/findex.egg-info/entry_points.txt
 src/findex.egg-info/requires.txt
 src/findex.egg-info/top_level.txt
+src/findex/web/app.py
+src/findex/web/config.py
+src/findex/web/schemas.py
 tests/test_cli.py
 tests/test_crawler.py
 tests/test_index.py
 tests/test_ranking.py
 tests/test_search.py
 tests/test_tokenize.py
+tests/test_web.py

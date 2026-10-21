@@ -34,6 +34,20 @@ def main_callback(
     setup_logging(verbose)
 
 @app.command()
+def serve(
+    host: str = typer.Option("0.0.0.0", "--host", "-h", help="Хост веб-сервера"),
+    port: int = typer.Option(8000, "--port", "-p", help="Порт веб-сервера"),
+    workers: int = typer.Option(1, "--workers", "-w", help="Кількість uvicorn воркерів"),
+    index_path: Path = typer.Option(Path("index.bin"), "--index", "-i", help="Шлях до файлу індексу")
+) -> None:
+    """Запуск FastAPI веб-сервера утиліти findex."""
+    import uvicorn
+    import os
+    os.environ["FINDEX_INDEX_PATH"] = str(index_path)
+    console.print(f"[bold green]Запуск веб-сервера на http://{host}:{port}...[/bold green]")
+    uvicorn.run("findex.web.app:app", host=host, port=port, workers=workers)
+
+@app.command()
 def crawl(
     start_url: str = typer.Argument(..., help="Початковий URL для краулінгу"),
     max_pages: int = typer.Option(200, "--max-pages", "-m", help="Максимальна кількість сторінок"),
