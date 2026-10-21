@@ -5,7 +5,7 @@ import uvicorn
 app = typer.Typer()
 
 @app.command()
-def index(data_dir: str = "data", out: str = "index.bin"):
+def index(data_dir: str = typer.Argument("data"), out: str = typer.Option("index.bin", "--out")):
     build_index(data_dir, out)
 
 @app.command()

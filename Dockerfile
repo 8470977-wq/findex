@@ -13,7 +13,7 @@ RUN mkdir -p data && \
     echo "python search engine inverted index" > data/doc1.txt && \
     echo "fastapi web search engine with ranking bm25" > data/doc2.txt && \
     echo "findex cli application typer rich" > data/doc3.txt && \
-    findex index data/ --out index.bin
+    findex index data --out index.bin
 
 RUN useradd -m findexuser && chown -R findexuser:findexuser /app
 USER findexuser
