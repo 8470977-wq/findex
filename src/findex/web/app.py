@@ -15,7 +15,9 @@ from findex.web.config import settings
 from findex.web.schemas import SearchResponse, SearchResultItem, StatsResponse, DocResponse
 
 logger = logging.getLogger("findex.web")
-templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+BASE_DIR = Path(__file__).resolve().parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 index_instance: Optional[InvertedIndex] = None
 
@@ -74,7 +76,7 @@ def search_api(
     q: str = Query(..., min_length=1, description="Пошуковий запит"),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
-    scorer: str = Query("bm25", regex="^(bm25|tfidf)$"),
+    scorer: str = Query("bm25", pattern="^(bm25|tfidf)$"),
     index: InvertedIndex = Depends(get_index)
 ):
     ranker = Ranker(index)
@@ -114,7 +116,7 @@ def get_document(doc_id: int, index: InvertedIndex = Depends(get_index)):
     try:
         content = Path(meta.path).read_text(encoding="utf-8", errors="ignore")
     except Exception:
-        content = "Не вдалося прочитати вміст файла."
+        content = f"Вміст документа #{doc_id}"
         
     return DocResponse(doc_id=doc_id, path=meta.path, content=content)
 
@@ -132,9 +134,14 @@ def home_page(request: Request, q: Optional[str] = None, index: InvertedIndex = 
             meta = index.doc_metadata.get(r.doc_id)
             content = ""
             if meta and Path(meta.path).exists():
-                content = Path(meta.path).read_text(encoding="utf-8", errors="ignore")
+                try:
+                    content = Path(meta.path).read_text(encoding="utf-8", errors="ignore")
+                except Exception:
+                    content = f"Документ #{r.doc_id}"
+            else:
+                content = f"Збіг у документі #{r.doc_id}"
                 
-            snippet = content[:200] if content else "Опис недоступний"
+            snippet = content[:200]
             for word in q.split():
                 snippet = re.sub(f"({re.escape(word)})", r"<mark>\1</mark>", snippet, flags=re.IGNORECASE)
                 
@@ -144,9 +151,10 @@ def home_page(request: Request, q: Optional[str] = None, index: InvertedIndex = 
                 "snippet": snippet
             })
             
-    return templates.TemplateResponse("index.html", {
+    context = {
         "request": request,
         "query": q or "",
         "results": results,
         "total": total
-    })
+    }
+    return templates.TemplateResponse(request=request, name="index.html", context=context)
