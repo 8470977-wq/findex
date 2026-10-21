@@ -7,10 +7,10 @@ RUN pip install --no-cache-dir --upgrade pip
 
 COPY . /app
 
-# Встановлюємо необхідні залежності та пакет findex
+# Встановлюємо залежності та сам проєкт
 RUN pip install --no-cache-dir .
 
-# Створюємо non-root користувача
+# Створюємо користувача non-root для безпеки
 RUN useradd -m findexuser && chown -R findexuser:findexuser /app
 USER findexuser
 
