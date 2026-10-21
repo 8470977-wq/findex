@@ -1,4 +1,4 @@
-# findex — Пошукова система (Лабораторна 7: FastAPI, Pydantic і публічна адреса)
+# findex — Лабораторна робота №7 Пошук у вебі: FastAPI, Pydantic і публічна адреса.
 
 🌐 **Живий публічний сервіс (Render / Fly.io)**: https://findex-web-search.onrender.com
 
