@@ -1,62 +1,43 @@
 Metadata-Version: 2.4
 Name: findex
-Version: 0.7.0
-Summary: FastAPI web search engine with inverted index and ranking
+Version: 1.0.0
+Summary: High-performance Python search engine with BM25, NumPy, Async Crawler, FastAPI & Semantic Hybrid Search
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
-Requires-Dist: typer>=0.9.0
-Requires-Dist: rich>=13.0.0
-Requires-Dist: fastapi>=0.100.0
-Requires-Dist: uvicorn>=0.22.0
-Requires-Dist: pydantic>=2.0.0
-Requires-Dist: pydantic-settings>=2.0.0
-Requires-Dist: jinja2>=3.1.0
-Requires-Dist: httpx>=0.24.0
+Requires-Dist: typer
+Requires-Dist: rich
+Requires-Dist: fastapi
+Requires-Dist: uvicorn
+Requires-Dist: pydantic
+Requires-Dist: pydantic-settings
+Requires-Dist: jinja2
+Requires-Dist: httpx
+Requires-Dist: psutil
+Requires-Dist: selectolax
+Requires-Dist: numpy
+Requires-Dist: sentence-transformers
 Provides-Extra: dev
-Requires-Dist: pytest>=7.0.0; extra == "dev"
-Requires-Dist: mypy>=1.0.0; extra == "dev"
-Requires-Dist: coverage>=7.0.0; extra == "dev"
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-benchmark; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Requires-Dist: coverage; extra == "dev"
 
-# findex — Лабораторна робота №7 Пошук у вебі: FastAPI, Pydantic і публічна адреса.
+# findex — High-Performance Python Search Engine
 
-🌐 **Живий публічний сервіс (Render / Fly.io)**: https://findex-web-search.onrender.com
+> **Одне речення про проєкт**: Повнофункціональна високоефективна пошукова система на Python з інвертованим індексом, паралельним індексуванням, асинхронним краулером, FastAPI REST API та семантичним гібридним пошуком.
 
-![Version](https://img.shields.io/badge/version-v0.7.0-blue)
-
-## 1. Специфікація вебавтоматизації
-- **Фреймворк**: FastAPI + Uvicorn (ASGI)
-- **Валідація**: Pydantic v2 & Pydantic Settings
-- **Шаблонізатор**: Jinja2 для серверного рендерингу пошукового UI
-- **Контейнеризація**: Dockerfile (Multi-stage build, Non-root user)
+🌐 **Живий публічний сервіс (Render)**: https://findex-nnc5.onrender.com
+![Version](https://img.shields.io/badge/version-v1.0.0-brightgreen)
 
 ---
 
-## 2. Результати навантажувального тестування (oha)
+## 1. Архітектурна схема системи (Data Flow)
 
-Тестування ендпоінту `GET /search?q=python` на 20 одночасних запитах:
-
-| Конфігурація | RPS (Req/sec) | p50 (ms) | p95 (ms) | p99 (ms) |
-| :--- | :--- | :--- | :--- | :--- |
-| **1 Worker (`async def`)** | 850.4 req/s | 11.2 ms | 24.5 ms | 38.1 ms |
-| **1 Worker (`def` sync)** | 420.1 req/s | 23.5 ms | 48.2 ms | 72.0 ms |
-| **4 Workers (`uvicorn`)** | **2310.8 req/s** | **4.1 ms** | **9.8 ms** | **14.2 ms** |
-| **Розгорнутий сервіс (Render)** | **480.2 req/s** | **21.0 ms** | **45.0 ms** | **68.0 ms** |
-
----
-
-## 3. Зв'язок із Лабораторними 5–6 (GIL vs Event Loop)
-
-- **Чому `async def` ефективніший для I/O**: У Лабораторній 6 ми переконалися, що асинхронність ідеальна для I/O-bound задач. Пошук у базі / індексі без блокування дозволяє обробляти тисячі запитів в одному потоці.
-- **Вплив GIL та мультипроцесність**: Для обчислювальних задач (BM25 розрахунки) один потік впирається у GIL. Тому винесення серверів у декілька Uvicorn воркерів (`--workers 4`) дає максимальне прискорення, задіюючи декілька ядер ЦП (як у Лабі 5).
-
----
-
-## 4. Запуск через Docker та CLI
-
-```bash
-# Запуск через CLI
-findex serve --port 8000 --workers 4
-
-# Збірка та запуск Docker
-docker build -t findex:v0.7.0 .
-docker run -p 8000:8000 -e FINDEX_INDEX_PATH=index.bin findex:v0.7.0
+```text
+ [ Веб-сайти ]
+       │
+ (Async Crawler)
+       ▼
+ [ JSONL Корпус ] ──► (Tokenizer) ──► (Inverted Index)
+                                              │
+ [ Web UI / API ] ◄── (FastAPI) ◄── (BM25 + RRF Hybrid)

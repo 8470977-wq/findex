@@ -23,6 +23,7 @@ src/findex/web/schemas.py
 tests/test_cli.py
 tests/test_crawler.py
 tests/test_index.py
+tests/test_lab8.py
 tests/test_ranking.py
 tests/test_search.py
 tests/test_tokenize.py

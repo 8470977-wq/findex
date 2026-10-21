@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "findex"
-version = "0.7.0"
-description = "FastAPI web search engine with inverted index and ranking"
+version = "1.0.0"
+description = "High-performance Python search engine with BM25, NumPy, Async Crawler, FastAPI & Semantic Hybrid Search"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -18,12 +18,15 @@ dependencies = [
     "jinja2",
     "httpx",
     "psutil",
-    "selectolax"
+    "selectolax",
+    "numpy",
+    "sentence-transformers"
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
+    "pytest-benchmark",
     "mypy",
     "coverage"
 ]

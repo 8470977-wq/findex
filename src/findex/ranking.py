@@ -1,84 +1,101 @@
 import math
-import time
-import heapq
-from functools import wraps, lru_cache
-from typing import List, Tuple, Dict, Any, Protocol
-from dataclasses import dataclass
+import numpy as np
+from typing import List, Dict, Tuple
+from findex.models import SearchResult, Posting
 from findex.index import InvertedIndex
 
-def timed(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        start = time.perf_counter()
-        res = func(*args, **kwargs)
-        elapsed = time.perf_counter() - start
-        print(f"[TIMED] Function '{func.__name__}' executed in {elapsed:.6f}s")
-        return res
-    return wrapper
+class Scorer:
+    def score(self, query_terms: List[str], doc_id: int) -> float:
+        raise NotImplementedError
 
-@dataclass(order=True)
-class SearchResult:
-    score: float
-    doc_id: int
-
-class Scorer(Protocol):
-    def score(self, term: str, tf: int, doc_len: int) -> float: ...
-
-class TfidfScorer:
-    def __init__(self, index: InvertedIndex) -> None:
-        self.index = index
-        self.N = index.num_docs
-
-    def score(self, term: str, tf: int, doc_len: int) -> float:
-        df = self.index.df(term)
-        if df == 0 or doc_len == 0:
-            return 0.0
-        idf = math.log((self.N / df) + 1)
-        term_tf = tf / doc_len
-        return term_tf * idf
-
-class BM25Scorer:
+class BM25Scorer(Scorer):
     def __init__(self, index: InvertedIndex, k1: float = 1.5, b: float = 0.75) -> None:
         self.index = index
-        self.N = index.num_docs
         self.k1 = k1
         self.b = b
-        self.avgdl = index.avg_doc_length
 
-    def score(self, term: str, tf: int, doc_len: int) -> float:
-        df = self.index.df(term)
-        if df == 0:
-            return 0.0
-        idf = math.log((self.N - df + 0.5) / (df + 0.5) + 1)
-        numerator = tf * (self.k1 + 1)
-        denominator = tf + self.k1 * (1 - self.b + self.b * (doc_len / (self.avgdl or 1.0)))
-        return idf * (numerator / denominator)
+    def score_fast(self, query_terms: List[str]) -> List[SearchResult]:
+        """Оптимізоване векторне обчислення BM25 через NumPy."""
+        scores: Dict[int, float] = {}
+        N = self.index.num_docs
+        avgdl = self.index.avg_doc_length or 1.0
+
+        for term in query_terms:
+            postings = self.index[term]
+            if not postings:
+                continue
+            
+            df = len(postings)
+            idf = math.log((N - df + 0.5) / (df + 0.5) + 1.0)
+            
+            doc_ids = np.array([p.doc_id for p in postings], dtype=np.int32)
+            tfs = np.array([p.tf for p in postings], dtype=np.float32)
+            lens = np.array([self.index.doc_metadata[d].length for d in doc_ids], dtype=np.float32)
+
+            # Векторна формула BM25 через NumPy
+            num = tfs * (self.k1 + 1.0)
+            den = tfs + self.k1 * (1.0 - self.b + self.b * (lens / avgdl))
+            term_scores = idf * (num / den)
+
+            for d_id, s in zip(doc_ids, term_scores):
+                scores[int(d_id)] = scores.get(int(d_id), 0.0) + float(s)
+
+        results = [SearchResult(doc_id=d, score=s) for d, s in scores.items()]
+        results.sort(key=lambda x: x.score, reverse=True)
+        return results
+
+class TfidfScorer(Scorer):
+    def __init__(self, index: InvertedIndex) -> None:
+        self.index = index
+
+    def score_fast(self, query_terms: List[str]) -> List[SearchResult]:
+        scores: Dict[int, float] = {}
+        N = self.index.num_docs
+
+        for term in query_terms:
+            postings = self.index[term]
+            if not postings:
+                continue
+            df = len(postings)
+            idf = math.log((N + 1.0) / (df + 1.0)) + 1.0
+
+            for p in postings:
+                tf = math.log(1.0 + p.tf)
+                scores[p.doc_id] = scores.get(p.doc_id, 0.0) + tf * idf
+
+        results = [SearchResult(doc_id=d, score=s) for d, s in scores.items()]
+        results.sort(key=lambda x: x.score, reverse=True)
+        return results
 
 class Ranker:
     def __init__(self, index: InvertedIndex) -> None:
         self.index = index
 
-    @timed
-    def search(self, query: str, scorer: Scorer, top_k: int = 5) -> List[SearchResult]:
-        terms = query.lower().split()
-        scores: Dict[int, float] = {}
+    def search(self, query: str, scorer: Scorer, top_k: int = 10) -> List[SearchResult]:
+        from findex.corpus import tokenize
+        terms = list(tokenize(query))
+        if not terms:
+            return []
 
-        for term in terms:
-            postings = self.index[term]
-            for p in postings:
-                doc_len = self.index.doc_metadata[p.doc_id].length
-                term_score = scorer.score(term, p.tf, doc_len)
-                scores[p.doc_id] = scores.get(p.doc_id, 0.0) + term_score
+        if isinstance(scorer, BM25Scorer):
+            results = scorer.score_fast(terms)
+        elif isinstance(scorer, TfidfScorer):
+            results = scorer.score_fast(terms)
+        else:
+            results = []
 
-        # Використовуємо heapq.nlargest для ефективного вибору топ-K
-        heap = [SearchResult(score=score, doc_id=doc_id) for doc_id, score in scores.items()]
-        return heapq.nlargest(top_k, heap)
+        return results[:top_k]
 
-@lru_cache(maxsize=128)
-def cached_search(query: str, index_path_str: str, method: str = "bm25") -> List[Tuple[int, float]]:
-    from pathlib import Path
-    idx = InvertedIndex.load_pickle(Path(index_path_str))
-    ranker = Ranker(idx)
-    scorer = BM25Scorer(idx) if method == "bm25" else TfidfScorer(idx)
-    results = ranker.search(query, scorer)
-    return [(r.doc_id, r.score) for r in results]
+def rrf_merge(lexical_results: List[SearchResult], semantic_results: List[SearchResult], k: int = 60) -> List[SearchResult]:
+    """Reciprocal Rank Fusion (RRF) для об'єднання лексичних і семантичних результатів."""
+    scores: Dict[int, float] = {}
+
+    for rank, res in enumerate(lexical_results):
+        scores[res.doc_id] = scores.get(res.doc_id, 0.0) + 1.0 / (k + rank + 1)
+
+    for rank, res in enumerate(semantic_results):
+        scores[res.doc_id] = scores.get(res.doc_id, 0.0) + 1.0 / (k + rank + 1)
+
+    merged = [SearchResult(doc_id=d, score=s) for d, s in scores.items()]
+    merged.sort(key=lambda x: x.score, reverse=True)
+    return merged

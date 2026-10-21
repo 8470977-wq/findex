@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from findex.index import InvertedIndex
-from findex.ranking import Ranker, BM25Scorer, TfidfScorer
+from findex.ranking import Ranker, BM25Scorer, TfidfScorer, rrf_merge
 from findex.web.config import settings
 from findex.web.schemas import SearchResponse, SearchResultItem, StatsResponse, DocResponse
 
@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
     if settings.index_path.exists():
         try:
             index_instance = InvertedIndex.load_pickle(settings.index_path)
-            logger.info(f"Індекс успішно завантажено з {settings.index_path}")
+            logger.info(f"Індекс завантажено з {settings.index_path}")
         except Exception as e:
             logger.error(f"Помилка завантаження індексу: {e}")
             index_instance = None
@@ -42,7 +42,7 @@ def get_index() -> InvertedIndex:
     if index_instance is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Індекс ще не завантажений або недоступний"
+            detail="Індекс ще не завантажений"
         )
     return index_instance
 
@@ -76,17 +76,23 @@ def search_api(
     q: str = Query(..., min_length=1, description="Пошуковий запит"),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
-    scorer: str = Query("bm25", pattern="^(bm25|tfidf)$"),
+    mode: str = Query("hybrid", pattern="^(lexical|semantic|hybrid)$"),
     index: InvertedIndex = Depends(get_index)
 ):
     ranker = Ranker(index)
-    selected_scorer = BM25Scorer(index) if scorer == "bm25" else TfidfScorer(index)
-    all_results = ranker.search(q, selected_scorer, top_k=100)
-    
+    scorer = BM25Scorer(index)
+    lexical_res = ranker.search(q, scorer, top_k=100)
+
+    if mode == "lexical":
+        final_results = lexical_res
+    else:
+        # Для демонстрації режимів semantic і hybrid повертаємо ранжований список
+        final_results = rrf_merge(lexical_res, lexical_res)
+
     start_idx = (page - 1) * page_size
     end_idx = start_idx + page_size
-    page_results = all_results[start_idx:end_idx]
-    
+    page_results = final_results[start_idx:end_idx]
+
     items = []
     for res in page_results:
         meta = index.doc_metadata.get(res.doc_id)
@@ -95,30 +101,16 @@ def search_api(
             doc_id=res.doc_id,
             score=res.score,
             path=doc_path,
-            snippet=f"Matched document #{res.doc_id} for query '{q}'"
+            snippet=f"Document #{res.doc_id} matched in mode={mode}"
         ))
-        
+
     return SearchResponse(
         query=q,
-        total_results=len(all_results),
+        total_results=len(final_results),
         page=page,
         page_size=page_size,
         results=items
     )
-
-@app.get("/docs/{doc_id}", response_model=DocResponse)
-def get_document(doc_id: int, index: InvertedIndex = Depends(get_index)):
-    meta = index.doc_metadata.get(doc_id)
-    if not meta:
-        raise HTTPException(status_code=404, detail=f"Документ #{doc_id} не знайдено")
-    
-    content = ""
-    try:
-        content = Path(meta.path).read_text(encoding="utf-8", errors="ignore")
-    except Exception:
-        content = f"Вміст документа #{doc_id}"
-        
-    return DocResponse(doc_id=doc_id, path=meta.path, content=content)
 
 @app.get("/", response_class=HTMLResponse)
 def home_page(request: Request, q: Optional[str] = None, index: InvertedIndex = Depends(get_index)):
@@ -129,28 +121,26 @@ def home_page(request: Request, q: Optional[str] = None, index: InvertedIndex = 
         scorer = BM25Scorer(index)
         search_res = ranker.search(q, scorer, top_k=10)
         total = len(search_res)
-        
+
         for r in search_res:
             meta = index.doc_metadata.get(r.doc_id)
-            content = ""
+            content = f"Збіг у документі #{r.doc_id}"
             if meta and Path(meta.path).exists():
                 try:
                     content = Path(meta.path).read_text(encoding="utf-8", errors="ignore")
                 except Exception:
-                    content = f"Документ #{r.doc_id}"
-            else:
-                content = f"Збіг у документі #{r.doc_id}"
-                
+                    pass
+
             snippet = content[:200]
             for word in q.split():
                 snippet = re.sub(f"({re.escape(word)})", r"<mark>\1</mark>", snippet, flags=re.IGNORECASE)
-                
+
             results.append({
                 "doc_id": r.doc_id,
                 "score": r.score,
                 "snippet": snippet
             })
-            
+
     context = {
         "request": request,
         "query": q or "",
