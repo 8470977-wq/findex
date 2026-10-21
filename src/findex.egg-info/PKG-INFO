@@ -1,0 +1,22 @@
+Metadata-Version: 2.4
+Name: findex
+Version: 0.1.0
+Summary: Inverted index and search engine in Python
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+
+# findex — Пошукова система (Лабораторна 4)
+
+## Особливості Лабораторної роботи 4
+- **Пакування та розгортання**: Проєкт перетворено на повноцінний Python-пакет із використанням `pyproject.toml`.
+- **Консольний інтерфейс (CLI)**: Створено єдину точку входу `findex` з підкомандами `index`, `search`, `rank`.
+- **Статична типізація**: Повна підтримка type hints та валідація через `mypy`.
+- **Автоматизоване тестування**: Розширений набор модульних тестів `pytest`.
+
+---
+
+## Встановлення та запуск
+
+1. **Встановлення пакета в режим розробки**:
+   ```bash
+   pip install -e .
