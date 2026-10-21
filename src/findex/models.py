@@ -1,15 +1,19 @@
 from dataclasses import dataclass
-from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
-@dataclass(frozen=True, slots=True)
+@dataclass
 class Posting:
     doc_id: int
-    tf: int  # Term Frequency (частота терміну у документі)
-    positions: Optional[List[int]] = None  # Позиції токенів (опційно)
+    tf: int
 
-@dataclass(frozen=True, slots=True)
+@dataclass
 class DocMeta:
     doc_id: int
     path: str
-    length: int  # Загальна кількість токенів у документі
+    length: int
+
+@dataclass
+class SearchResult:
+    doc_id: int
+    score: float
+    snippet: Optional[str] = None
