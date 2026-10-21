@@ -16,7 +16,9 @@ dependencies = [
     "pydantic",
     "pydantic-settings",
     "jinja2",
-    "httpx"
+    "httpx",
+    "psutil",
+    "selectolax"
 ]
 
 [project.optional-dependencies]
