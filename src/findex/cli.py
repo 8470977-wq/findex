@@ -34,17 +34,19 @@ def main_callback(
 @app.command()
 def index(
     data_dir: Path = typer.Argument(..., help="Шлях до каталогу з документами"),
-    out: Path = typer.Option(Path("index.bin"), "--out", "-o", help="Шлях збереження індексу")
+    out: Path = typer.Option(Path("index.bin"), "--out", "-o", help="Шлях збереження індексу"),
+    workers: int = typer.Option(1, "--workers", "-w", help="Кількість паралельних воркерів"),
+    executor: str = typer.Option("serial", "--executor", "-e", help="Тип виконання: serial, threads, processes")
 ) -> None:
-    """Побудова та збереження інвертованого індексу."""
+    """Побудова та збереження інвертованого індексу з підтримкою паралелізму."""
     if not data_dir.exists():
         err_console.print(f"[bold red]Помилка:[/bold red] Каталог '{data_dir}' не існує.")
         raise typer.Exit(code=1)
 
     with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), transient=True) as progress:
-        progress.add_task(description="Побудова індексу...", total=None)
+        progress.add_task(description=f"Побудова індексу ({executor}, workers={workers})...", total=None)
         idx = InvertedIndex()
-        idx.build(data_dir)
+        idx.build(data_dir, workers=workers, executor_type=executor)
         idx.save_pickle(out)
 
     console.print(f"[bold green]Успішно![/bold green] Індекс збережено у '{out}'. Документів: {idx.num_docs}")

@@ -1,12 +1,39 @@
 import pickle
+import os
+import psutil
 from pathlib import Path
-from typing import Dict, List, Iterator, Any
+from typing import Dict, List, Iterator, Any, Tuple
 from functools import cached_property
 from collections.abc import Mapping
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 from findex.models import Posting, DocMeta
 from findex.corpus import tokenize
+
+def build_partial(args: Tuple[List[Path], int]) -> Tuple[Dict[str, List[Posting]], Dict[int, DocMeta]]:
+    """Функція рівня модуля для паралельної обробки шматка файлів (воркера)."""
+    filepaths, start_doc_id = args
+    partial_index: Dict[str, List[Posting]] = {}
+    partial_meta: Dict[int, DocMeta] = {}
+
+    for i, filepath in enumerate(filepaths):
+        doc_id = start_doc_id + i
+        text = filepath.read_text(encoding="utf-8", errors="ignore")
+        tokens = list(tokenize(text))
+
+        partial_meta[doc_id] = DocMeta(doc_id=doc_id, path=str(filepath), length=len(tokens))
+
+        tf_counts: Dict[str, int] = {}
+        for token in tokens:
+            tf_counts[token] = tf_counts.get(token, 0) + 1
+
+        for term, tf in tf_counts.items():
+            if term not in partial_index:
+                partial_index[term] = []
+            partial_index[term].append(Posting(doc_id=doc_id, tf=tf))
+
+    return partial_index, partial_meta
 
 class InvertedIndex(Mapping):
     def __init__(self) -> None:
@@ -14,32 +41,47 @@ class InvertedIndex(Mapping):
         self.doc_metadata: Dict[int, DocMeta] = {}
         self.doc_count: int = 0
 
-    def build(self, data_dir: Path) -> None:
-        """Побудова інвертованого індексу з текстових файлів у директорії."""
+    def merge(self, partials: List[Tuple[Dict[str, List[Posting]], Dict[int, DocMeta]]]) -> None:
+        """Об'єднання часткових індексів від воркерів в один загальний індекс."""
         self.index.clear()
         self.doc_metadata.clear()
         self.doc_count = 0
 
-        files = sorted(list(data_dir.glob("*.txt")))
-        for doc_id, filepath in enumerate(files):
-            text = filepath.read_text(encoding="utf-8", errors="ignore")
-            tokens = list(tokenize(text))
-            
-            # Сохраняем метаданные документа
-            self.doc_metadata[doc_id] = DocMeta(doc_id=doc_id, path=str(filepath), length=len(tokens))
-            
-            # Подсчитываем частоты терминов (tf)
-            tf_counts: Dict[str, int] = {}
-            for token in tokens:
-                tf_counts[token] = tf_counts.get(token, 0) + 1
-                
-            # Заполняем индекс
-            for term, tf in tf_counts.items():
+        for p_index, p_meta in partials:
+            self.doc_metadata.update(p_meta)
+            for term, postings in p_index.items():
                 if term not in self.index:
                     self.index[term] = []
-                self.index[term].append(Posting(doc_id=doc_id, tf=tf))
-                
-            self.doc_count += 1
+                self.index[term].extend(postings)
+
+        self.doc_count = len(self.doc_metadata)
+
+    def build(self, data_dir: Path, workers: int = 1, executor_type: str = "serial") -> None:
+        """Побудова індексу з підтримкою послідовного та паралельного виконання."""
+        files = sorted(list(data_dir.glob("*.txt")))
+        if not files:
+            return
+
+        workers = max(1, workers)
+        chunk_size = (len(files) + workers - 1) // workers
+        chunks = []
+
+        for i in range(0, len(files), chunk_size):
+            chunk_files = files[i:i + chunk_size]
+            chunks.append((chunk_files, i))
+
+        if executor_type == "serial" or workers == 1:
+            partials = [build_partial(chunk) for chunk in chunks]
+        elif executor_type == "threads":
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                partials = list(executor.map(build_partial, chunks))
+        elif executor_type == "processes":
+            with ProcessPoolExecutor(max_workers=workers) as executor:
+                partials = list(executor.map(build_partial, chunks))
+        else:
+            raise ValueError(f"Unknown executor_type: {executor_type}")
+
+        self.merge(partials)
 
     # Dunder-методи
     def __getitem__(self, term: str) -> List[Posting]:
